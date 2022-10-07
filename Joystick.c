@@ -222,9 +222,14 @@ void GetNextReport(USB_JoystickReport_Input_t* const ReportData) {
 			break;
 		case STOP_Y:
 			if (ypos < 120 - 1)
+			{
 				state = MOVE_Y;
+			}
 			else
+			{
+				ReportData->Button |= SWITCH_MINUS;
 				state = DONE;
+			}
 			break;
 		case MOVE_X:
 			if (ypos % 2)
