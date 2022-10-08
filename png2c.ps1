@@ -1,11 +1,49 @@
 Param( $filename )
 Add-Type -AssemblyName System.Drawing
 
+function Conv1bpp() {
+	param ($img)
+	
+	$newImg = New-Object System.Drawing.Bitmap($img.Width, $img.Height, [System.Drawing.Imaging.PixelFormat]::Format1bppIndexed)
+	$bmpDate = $newImg.LockBits((New-Object System.Drawing.Rectangle(0, 0, $newImg.Width, $newImg.Height)), [System.Drawing.Imaging.ImageLockMode]::WriteOnly, $newImg.PixelFormat)
+	$errors = @((New-Object float[] ($bmpDate.Width + 1)), (New-Object float[] ($bmpDate.Width + 1)))
+	$pixels = New-Object byte[] ($bmpDate.Stride * $bmpDate.Height)
+
+	for ( $y = 0; $y -lt $bmpDate.Height; $y++ ) {
+		for ( $x = 0; $x -lt $bmpDate.Width; $x++ ) {
+			$err = $img.GetPixel($x, $y).GetBrightness() + $errors[0][$x]
+			if ( 0.5 -le $err ) {
+				$pos = [int](($x -shr 3) + ($bmpDate.Stride * $y))
+				$pixels[$pos] = $pixels[$pos] -bor [byte](0x80 -shr ($x -band 0x7))
+				$err -= 1.0
+			}
+			$errors[0][$x + 1] += $err * 7.0 / 16.0
+			if ( $x -gt 0 ) {
+				$errors[1][$x - 1] += $err * 3.0 / 16.0
+			}
+			$errors[1][$x] += $err * 5.0 / 16.0
+			$errors[1][$x + 1] += $err * 1.0 / 16.0
+		}
+		$errors[0] = $errors[1]
+		$errors[1] = New-Object float[] $errors[0].Length
+	}
+
+	$ptr = $bmpDate.Scan0
+	[System.Runtime.InteropServices.Marshal]::Copy($pixels, 0, $ptr, $pixels.Length)
+	$newImg.UnlockBits($bmpDate)
+	
+	return $newImg
+}
+
 $img = [System.Drawing.Image]::FromFile($filename)
 if ( $img.Width -ne 320 -or $img.Height -ne 120 ) {
 	Write-Host "ERROR: Image must be 320px by 120px!"
 	$img.Dispose()
 	exit
+}
+
+if ( $img.PixelFormat -ne "Format1bppIndexed" ) {
+	$img = Conv1bpp $img
 }
 
 $data = New-Object System.Collections.ArrayList
@@ -41,4 +79,4 @@ for($i = 0; $i -lt 4800; $i++)
 $txt.WriteLine("0x0};")
 $txt.Close()
 
-echo "{} converted with original colormap and saved to image.c $filename"
+echo "$filename converted with original colormap and saved to image.c"
